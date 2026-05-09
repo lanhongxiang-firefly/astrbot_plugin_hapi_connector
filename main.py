@@ -116,17 +116,31 @@ class HapiConnectorPlugin(Star):
 
     async def _llm_judge_danger(self, tool_name: str, arguments: dict, session_id: str) -> str:
         """LLM 危险评估回调，使用 AstrBot 内置 LLM 提供者判断操作安全性"""
-        try:
-            providers = self.context.get_all_providers()
-        except Exception as e:
-            logger.warning(f"[LLM法官] 获取提供者失败: {e}")
-            return "dangerous"
+        provider = None
 
-        if not providers:
+        # 优先使用用户指定的判断专用提供商
+        judge_id = self.config.get("judge_provider_id", "").strip()
+        if judge_id:
+            try:
+                provider = self.context.get_provider_by_id(judge_id)
+                if provider:
+                    logger.debug(f"[LLM法官] 使用指定提供商: {judge_id}")
+            except Exception as e:
+                logger.warning(f"[LLM法官] 查找指定提供商 '{judge_id}' 失败: {e}")
+
+        # fallback: 第一个可用提供商
+        if not provider:
+            try:
+                providers = self.context.get_all_providers()
+                if providers:
+                    provider = providers[0]
+            except Exception as e:
+                logger.warning(f"[LLM法官] 获取提供者列表失败: {e}")
+
+        if not provider:
             logger.warning("[LLM法官] 没有可用的 LLM 提供者，退回手动审批")
             return "dangerous"
 
-        provider = providers[0]
         return await llm_judge.judge_with_provider(provider, tool_name, arguments)
 
     def _is_admin(self, event: AstrMessageEvent) -> bool:

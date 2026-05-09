@@ -131,6 +131,7 @@ hapi codex    # Open Codex
 | `remind_pending` | 待审批请求超时重复提醒，防止 AI 会话缓存失效 | 开启 |
 | `remind_interval` | 待审批提醒间隔（秒），倒计时内处理完则不提醒 | 180 |
 | `llm_judge_enabled` | LLM 智能审批：由 AI 判断操作危险等级，安全操作自动放行，危险操作推送确认 | 关闭 |
+| `judge_provider_id` | LLM 智能审批专用提供商 ID（留空则自动选择） | 空 |
 | `auto_approve_enabled` | 忙时托管审批：在指定时间范围内自动批准所有权限请求 | 关闭 |
 | `auto_approve_start` | 忙时托管审批开始时间（HH:MM，24小时制） | `23:00` |
 | `auto_approve_end` | 忙时托管审批结束时间（HH:MM，24小时制，支持跨午夜） | `07:00` |
