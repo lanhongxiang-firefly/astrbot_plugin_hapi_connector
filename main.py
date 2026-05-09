@@ -19,6 +19,7 @@ from .pending_manager import PendingManager
 from .command_handlers import CommandHandlers
 from . import session_ops
 from . import formatters
+from . import llm_judge
 
 
 # ── AstrBot v4.18.3 pydantic v1 的 __setattr__ 会拦截 File 的 property setter，
@@ -112,6 +113,30 @@ class HapiConnectorPlugin(Star):
         # LLM 工具集成
         from .llm_integration import LLMIntegration
         self.llm_integration = LLMIntegration(self)
+
+    async def _llm_judge_danger(self, tool_name: str, arguments: dict, session_id: str) -> str:
+        """LLM 危险评估回调，调用配置的 LLM 判断操作安全性"""
+        endpoint = self.config.get("llm_judge_endpoint", "")
+        api_key = self.config.get("llm_judge_api_key", "")
+        model = self.config.get("llm_judge_model", "gpt-4o-mini")
+
+        if not endpoint:
+            # 尝试使用 AstrBot 内置 LLM 提供者的端点
+            try:
+                from astrbot.api.provider import get_provider
+                provider = get_provider()
+                if provider:
+                    endpoint = getattr(provider, 'base_url', '') or getattr(provider, 'endpoint', '')
+                    api_key = api_key or getattr(provider, 'api_key', '')
+                    model = model or getattr(provider, 'model', 'gpt-4o-mini')
+            except Exception:
+                pass
+
+        if not endpoint:
+            logger.warning("[LLM法官] 未配置端点，退回手动审批")
+            return "dangerous"
+
+        return await llm_judge.call_llm_judge(endpoint, api_key, model, tool_name, arguments)
 
     def _is_admin(self, event: AstrMessageEvent) -> bool:
         """检查发送者是否为管理员（动态读取配置）"""
@@ -369,6 +394,8 @@ class HapiConnectorPlugin(Star):
         auto_approve_start = self.config.get("auto_approve_start", "23:00")
         auto_approve_end = self.config.get("auto_approve_end", "07:00")
         max_reconnect = self.config.get("max_reconnect_attempts", 30)
+        llm_judge_enabled = self.config.get("llm_judge_enabled", False)
+
         self.sse_listener.start(
             output_level,
             remind_pending=remind,
@@ -378,6 +405,8 @@ class HapiConnectorPlugin(Star):
             auto_approve_end=auto_approve_end,
             summary_msg_count=self._summary_msg_count,
             max_reconnect_attempts=max_reconnect,
+            llm_judge_enabled=llm_judge_enabled,
+            llm_judge_callback=self._llm_judge_danger if llm_judge_enabled else None,
         )
         logger.info("HAPI Connector 已初始化，SSE 输出级别: %s", output_level)
 

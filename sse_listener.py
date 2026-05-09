@@ -47,6 +47,8 @@ class SSEListener:
         self._auto_approve_enabled: bool = False
         self._auto_approve_start: str = "23:00"
         self._auto_approve_end: str = "07:00"
+        self._llm_judge_enabled: bool = False
+        self._llm_judge_callback = None  # async (tool_name, arguments, sid) -> "safe"|"dangerous"
         self._summary_msg_count: int = 5
         # {session_id: seq}，记录已触发通知的消息序号，防止重复
         self._compact_notified_seqs: dict[str, int] = {}
@@ -72,6 +74,8 @@ class SSEListener:
         self._auto_approve_enabled = auto_approve_enabled
         self._auto_approve_start = auto_approve_start
         self._auto_approve_end = auto_approve_end
+        self._llm_judge_enabled = llm_judge_enabled
+        self._llm_judge_callback = llm_judge_callback
         self._max_reconnect = max_reconnect_attempts
         self._debounce_sids: set[str] = set()
         self._debounce_task: asyncio.Task | None = None
@@ -271,13 +275,35 @@ class SSEListener:
 
                 index = req.get("index", 0)
 
-                if self._auto_approve_enabled and self._in_auto_approve_window() and not is_question_request(req):
-                    # 忙时托管审批：自动批准非 question 请求
+                if is_question_request(req):
+                    # question 永远需要人工交互
+                    msg = format_question_notification(req, label, total, session_total, index)
+                    queued_notifications.append(msg)
+                elif self._auto_approve_enabled and self._in_auto_approve_window():
+                    # 忙时托管审批：时间窗口内自动批准
                     ok, _ = await session_ops.approve_permission(self.client, sid, rid)
                     tool = req.get("tool", "?")
-                    result_mark = "✓" if ok else "✗"
+                    result_mark = "\u2713" if ok else "\u2717"
                     notify_msg = f"[忙时托管审批] 已自动批准\n{label}\n  {result_mark} {tool}"
                     queued_notifications.append(notify_msg)
+                elif self._llm_judge_enabled and self._llm_judge_callback:
+                    # LLM 智能审批：让 AI 判断危险等级
+                    tool = req.get("tool", "?")
+                    arguments = req.get("arguments") or {}
+                    try:
+                        verdict = await self._llm_judge_callback(tool, arguments, sid)
+                    except Exception as e:
+                        logger.warning(f"[LLM法官] 回调异常，默认拒绝: {e}")
+                        verdict = "dangerous"
+                    if verdict == "safe":
+                        ok, _ = await session_ops.approve_permission(self.client, sid, rid)
+                        result_mark = "\u2713" if ok else "\u2717"
+                        notify_msg = f"[LLM智能审批] 判断安全，已自动批准\n{label}\n  {result_mark} {tool}"
+                        queued_notifications.append(notify_msg)
+                    else:
+                        detail = format_request_detail(req)
+                        msg = format_permission_notification(label, detail, total, session_total, index)
+                        queued_notifications.append(msg)
                 else:
                     if is_question_request(req):
                         msg = format_question_notification(req, label, total, session_total, index)
@@ -454,9 +480,15 @@ class SSEListener:
                 triggered_compact = True
                 self._compact_notified_seqs[sid] = seq
                 label = session_label_short(sid, self.sessions_cache)
-                if self._auto_approve_enabled and self._in_auto_approve_window():
+                if self._llm_judge_enabled and self._llm_judge_callback:
+                    # 上下文压缩总是安全的，LLM 智能审批模式下直接放行
                     ok, _ = await session_ops.send_message(self.client, sid, "/compact")
-                    mark = "✓" if ok else "✗"
+                    mark = "\u2713" if ok else "\u2717"
+                    await self._push_notification(
+                        f"[LLM智能审批] 已自动压缩上下文\n{label}\n  {mark} /compact", sid)
+                elif self._auto_approve_enabled and self._in_auto_approve_window():
+                    ok, _ = await session_ops.send_message(self.client, sid, "/compact")
+                    mark = "\u2713" if ok else "\u2717"
                     await self._push_notification(
                         f"[忙时托管审批] 已自动压缩上下文\n{label}\n  {mark} /compact", sid)
                 else:

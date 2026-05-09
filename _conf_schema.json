@@ -48,7 +48,12 @@
     "description": "SSE 推送级别",
     "type": "string",
     "default": "simple",
-    "options": ["silence", "simple", "summary", "detail"],
+    "options": [
+      "silence",
+      "simple",
+      "summary",
+      "detail"
+    ],
     "hint": "silence: 仅推送权限请求；simple: 推送纯文本消息及系统事件；summary: 任务完成时推送最近 N 条消息；detail: 实时推送所有消息"
   },
   "summary_msg_count": {
@@ -96,6 +101,30 @@
     "default": "07:00",
     "hint": "例如开始 22:00、结束 08:00，即晚上10点到次日早上8点，支持跨午夜"
   },
+  "llm_judge_enabled": {
+    "description": "LLM 智能审批：让 LLM 判断操作危险等级，安全操作自动放行，危险操作才推送确认",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后每个权限请求会先由 LLM 评估安全性。需要配置下方的 LLM 法官 API。推荐使用轻量快速模型（如 gpt-4o-mini / qwen2.5:7b）"
+  },
+  "llm_judge_endpoint": {
+    "description": "LLM 法官 API 端点（OpenAI 兼容格式）",
+    "type": "string",
+    "default": "",
+    "hint": "例如: https://api.openai.com 或 http://localhost:11434/v1 (Ollama)。留空则尝试使用 AstrBot 内置 LLM 提供者"
+  },
+  "llm_judge_api_key": {
+    "description": "LLM 法官 API Key",
+    "type": "string",
+    "default": "",
+    "hint": "留空则尝试使用 AstrBot 内置 LLM 提供者的 Key"
+  },
+  "llm_judge_model": {
+    "description": "LLM 法官模型名称",
+    "type": "string",
+    "default": "gpt-4o-mini",
+    "hint": "建议使用轻量快速模型，每次判断只需 ~500 tokens。推荐: gpt-4o-mini / claude-haiku-4-5 / qwen2.5:7b"
+  },
   "default_notification_window": {
     "description": "默认通知发送窗口",
     "type": "string",
@@ -103,4 +132,3 @@
     "hint": "留空则发送到 session 绑定的窗口，填写窗口 ID 则强制发送到指定窗口"
   }
 }
-
