@@ -115,28 +115,19 @@ class HapiConnectorPlugin(Star):
         self.llm_integration = LLMIntegration(self)
 
     async def _llm_judge_danger(self, tool_name: str, arguments: dict, session_id: str) -> str:
-        """LLM 危险评估回调，调用配置的 LLM 判断操作安全性"""
-        endpoint = self.config.get("llm_judge_endpoint", "")
-        api_key = self.config.get("llm_judge_api_key", "")
-        model = self.config.get("llm_judge_model", "gpt-4o-mini")
-
-        if not endpoint:
-            # 尝试使用 AstrBot 内置 LLM 提供者的端点
-            try:
-                from astrbot.api.provider import get_provider
-                provider = get_provider()
-                if provider:
-                    endpoint = getattr(provider, 'base_url', '') or getattr(provider, 'endpoint', '')
-                    api_key = api_key or getattr(provider, 'api_key', '')
-                    model = model or getattr(provider, 'model', 'gpt-4o-mini')
-            except Exception:
-                pass
-
-        if not endpoint:
-            logger.warning("[LLM法官] 未配置端点，退回手动审批")
+        """LLM 危险评估回调，使用 AstrBot 内置 LLM 提供者判断操作安全性"""
+        try:
+            providers = self.context.get_all_providers()
+        except Exception as e:
+            logger.warning(f"[LLM法官] 获取提供者失败: {e}")
             return "dangerous"
 
-        return await llm_judge.call_llm_judge(endpoint, api_key, model, tool_name, arguments)
+        if not providers:
+            logger.warning("[LLM法官] 没有可用的 LLM 提供者，退回手动审批")
+            return "dangerous"
+
+        provider = providers[0]
+        return await llm_judge.judge_with_provider(provider, tool_name, arguments)
 
     def _is_admin(self, event: AstrMessageEvent) -> bool:
         """检查发送者是否为管理员（动态读取配置）"""
