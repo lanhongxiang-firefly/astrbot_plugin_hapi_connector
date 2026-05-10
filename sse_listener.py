@@ -65,7 +65,8 @@ class SSEListener:
 
     def start(self, output_level: str = "summary", remind_pending: bool = False, remind_interval: int = 180,
               auto_approve_enabled: bool = False, auto_approve_start: str = "23:00", auto_approve_end: str = "07:00",
-              summary_msg_count: int = 5, max_reconnect_attempts: int = 0):
+              summary_msg_count: int = 5, max_reconnect_attempts: int = 0,
+              llm_judge_enabled: bool = False, llm_judge_callback=None):
         """启动 SSE 监听任务"""
         self.output_level = output_level
         self._summary_msg_count = summary_msg_count
